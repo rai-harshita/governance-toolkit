@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from checks import fairness, explain, genai_safety
+from checks import fairness, explain, genai_safety, metrics_extended   # NEW: metrics_extended
 from decision_engine import decide
 from schema.governance_record import (
     GovernanceRecord, SystemInfo, Performance, SubgroupResult,
@@ -40,6 +40,9 @@ def main():
     print("Running explainability checks...")
     expl = explain.run()
 
+    print("Running extended fairness metrics...")          # NEW
+    ext = to_py(metrics_extended.run())                    # NEW
+
     tab_results = {
         "fairness": {
             "dp_difference": fair["dp_difference"],
@@ -51,7 +54,7 @@ def main():
             "proxy_scores": expl["proxy_scores"],
         },
     }
-    tab_decision = decide(to_py(tab_results), run_id)
+    tab_decision = decide(to_py(tab_results), run_id, extended=ext)   # NEW: extended=ext
 
     tab_record = GovernanceRecord(
         system=SystemInfo(
@@ -78,7 +81,9 @@ def main():
         limitations=[
             "Trained on 1994 census data",
             "Stability tested only with small numeric noise on 300 rows",
-            "Only sex was audited; race and intersections are not yet covered",
+            "Only sex was audited in the basic check; see extended metrics for race, age and intersections",
+            "Bootstrap intervals reflect test-set sampling only, not retraining variance",   # NEW
+            "Age gap may partly reflect legitimate career-stage differences",                # NEW
         ],
         assumptions=["Test split is 30%, seed 42", "Positive class is income > 50K"],
         decision=tab_decision,
@@ -121,6 +126,7 @@ def main():
         "timestamp": datetime.now().isoformat(),
         "records": [tab_record.model_dump(mode="json"), gen_record.model_dump(mode="json")],
         "mitigation": to_py({"before": mit["before"], "after": mit["after"]}),
+        "extended": ext,                                   # NEW
         "genai_summary": summary,
         "genai_rows": rows,
         "proxy_scores": to_py(expl["proxy_scores"]),
