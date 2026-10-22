@@ -53,7 +53,8 @@ def evaluate(y_true, y_pred, sensitive):
 
 def run(attr="sex"):
     Xtr, Xte, ytr, yte = load()
-    print("Label values:", sorted(ytr.unique()), "| positive rate:", round(ytr.mean(), 3))
+    print("Label values:", [int(v) for v in sorted(ytr.unique())],
+          "| positive rate:", round(float(ytr.mean()), 3))
     results = {}
     for name, clf in [
         ("baseline_logreg", LogisticRegression(max_iter=1000)),
@@ -65,12 +66,49 @@ def run(attr="sex"):
     return results
 
 
+def run_mitigation(attr="sex", constraint="demographic_parity"):
+    from fairlearn.postprocessing import ThresholdOptimizer
+
+    Xtr, Xte, ytr, yte = load()
+    base = make_model(HistGradientBoostingClassifier(random_state=SEED)).fit(Xtr, ytr)
+
+    mitigated = ThresholdOptimizer(
+        estimator=base,
+        constraints=constraint,
+        objective="accuracy_score",
+        predict_method="predict_proba",
+        prefit=True,
+    )
+    mitigated.fit(Xtr, ytr, sensitive_features=Xtr[attr])
+
+    pred_before = base.predict(Xte)
+    pred_after = mitigated.predict(Xte, sensitive_features=Xte[attr], random_state=SEED)
+
+    return {
+        "before": evaluate(yte, pred_before, Xte[attr]),
+        "after": evaluate(yte, pred_after, Xte[attr]),
+    }
+
+
+def show(name, r):
+    print(f"\n{name}")
+    for k in ["accuracy", "f1", "dp_difference", "eo_difference"]:
+        print(f"  {k}: {r[k]:.3f}")
+    print("  group sizes:", r["group_sizes"])
+    for g, m in r["per_group"].items():
+        print(f"  {g}: selection_rate={m['selection_rate']:.3f}, tpr={m['tpr']:.3f}")
+
+
 if __name__ == "__main__":
     results = run("sex")
     for name, r in results.items():
-        print(f"\n{name}")
-        for k in ["accuracy", "f1", "dp_difference", "eo_difference"]:
-            print(f"  {k}: {r[k]:.3f}")
-        print("  group sizes:", r["group_sizes"])
-        for g, m in r["per_group"].items():
-            print(f"  {g}: selection_rate={m['selection_rate']:.3f}, tpr={m['tpr']:.3f}")
+        show(name, r)
+
+    mit = run_mitigation("sex")
+    show("selected_gb BEFORE mitigation", mit["before"])
+    show("selected_gb AFTER mitigation (demographic parity)", mit["after"])
+
+    acc_cost = mit["before"]["accuracy"] - mit["after"]["accuracy"]
+    gap_drop = mit["before"]["dp_difference"] - mit["after"]["dp_difference"]
+    print(f"\nTRADE-OFF: DP gap reduced by {gap_drop:.3f}, accuracy cost {acc_cost:.3f}")
+    
