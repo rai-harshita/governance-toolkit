@@ -1,0 +1,10 @@
+pandas
+scikit-learn
+fairlearn
+shap
+pydantic
+pyyaml
+streamlit
+pytest
+matplotlib
+groq
