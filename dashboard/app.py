@@ -471,24 +471,63 @@ elif page == "GenAI Safety":
     st.title("Generative AI Safety Evaluation")
     s = ev["genai_summary"]
     cats = ["injection", "jailbreak", "pii_leak", "bias", "hallucination"]
+
+    def asr(mode, cat):
+        v = s[mode][f"{cat}_asr"]
+        return v["rate"] if isinstance(v, dict) else v
+
+    def ci_str(mode, key):
+        v = s[mode].get(key)
+        if v is None:
+            return ""
+        if isinstance(v, dict):
+            return f"95% CI [{v['ci'][0]:.0%}–{v['ci'][1]:.0%}], n={v['n']}"
+        return ""
+
     c1, c2, c3 = st.columns(3)
-    c1.metric("Injection ASR (hardened)", f"{s['hardened']['injection_asr']:.0%}",
-              delta=f"{s['hardened']['injection_asr'] - s['baseline']['injection_asr']:+.0%} vs baseline",
+    c1.metric("Injection ASR (hardened)", f"{asr('hardened','injection'):.0%}",
+              delta=f"{asr('hardened','injection') - asr('baseline','injection'):+.0%} vs baseline",
               delta_color="inverse")
-    c2.metric("Jailbreak ASR (hardened)", f"{s['hardened']['jailbreak_asr']:.0%}",
-              delta=f"{s['hardened']['jailbreak_asr'] - s['baseline']['jailbreak_asr']:+.0%} vs baseline",
+    c2.metric("Jailbreak ASR (hardened)", f"{asr('hardened','jailbreak'):.0%}",
+              delta=f"{asr('hardened','jailbreak') - asr('baseline','jailbreak'):+.0%} vs baseline",
               delta_color="inverse")
     c3.metric("Over-refusal (hardened)", f"{s['hardened']['over_refusal_rate']:.0%}",
               delta=f"{s['hardened']['over_refusal_rate'] - s['baseline']['over_refusal_rate']:+.0%} vs baseline",
               delta_color="inverse")
 
-    rows = [{"category": c, "mode": m_, "ASR": s[m_][f"{c}_asr"]} for c in cats for m_ in ("baseline", "hardened")]
+    rows = [{"category": c, "mode": m_, "ASR": asr(m_, c)} for c in cats for m_ in ("baseline", "hardened")]
     fig = px.bar(pd.DataFrame(rows), x="category", y="ASR", color="mode", barmode="group",
                  text_auto=".0%", color_discrete_map={"baseline": RED, "hardened": TEAL})
     fig.update_layout(height=380, yaxis_tickformat=".0%")
     show_chart(fig)
-    st.caption("Small prompt suite (24 prompts): one prompt moves a rate by 17-25 points. "
-               "Treat rates as indicative, not precise.")
+    st.caption("Rates are indicative at this prompt-suite size. "
+               "Intervals are wide — see the CI column below.")
+
+    # Extended metrics table (only shown when new keys are present)
+    ext_keys = ["heldout_asr", "multilingual_asr", "multilingual_over_refusal"]
+    if any(k in s["hardened"] for k in ext_keys):
+        st.subheader("Extended metrics (held-out and multilingual splits)")
+        ext_rows = []
+        for key in ext_keys + ["over_refusal_ci"]:
+            v_h = s["hardened"].get(key)
+            v_b = s["baseline"].get(key)
+            if v_h is None:
+                continue
+            label = key.replace("_", " ").title()
+            b_rate = v_b["rate"] if isinstance(v_b, dict) else (v_b or 0)
+            h_rate = v_h["rate"] if isinstance(v_h, dict) else (v_h or 0)
+            h_ci = f"[{v_h['ci'][0]:.0%}–{v_h['ci'][1]:.0%}]" if isinstance(v_h, dict) else ""
+            ext_rows.append({"Metric": label, "Baseline": f"{b_rate:.0%}",
+                             "Hardened": f"{h_rate:.0%}", "Hardened 95% CI": h_ci,
+                             "n": v_h.get("n", "") if isinstance(v_h, dict) else ""})
+        st.dataframe(pd.DataFrame(ext_rows), hide_index=True, use_container_width=True)
+
+        rq_h = s["hardened"].get("refusal_quality")
+        rq_b = s["baseline"].get("refusal_quality")
+        if rq_h is not None:
+            st.metric("Refusal quality (hardened)", f"{rq_h:.2f}",
+                      delta=f"{rq_h - (rq_b or 0):+.2f} vs baseline",
+                      help="0 = cold/empty refusal, 1 = refuses and redirects helpfully")
 
     rws = ev["genai_rows"]
     st.subheader("Successful attacks (failure patterns)")
@@ -496,7 +535,8 @@ elif page == "GenAI Safety":
     if not fails:
         st.success("No successful attacks recorded.")
     for r in fails:
-        with st.expander(f"[{r['mode']}] {r['id']} · {r['category']}"):
+        split_tag = f" · {r['split']}" if r.get("split", "main") != "main" else ""
+        with st.expander(f"[{r['mode']}] {r['id']} · {r['category']}{split_tag}"):
             st.write("**Prompt:**", r["prompt"])
             st.write("**Reply:**", r["reply"])
     st.subheader("Benign prompts refused by the hardened bot (over-refusal)")
