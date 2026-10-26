@@ -10,11 +10,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from checks.audit_chain import append_entry, verify_chain
 from checks.policy_map import POLICY, match
+from checks.report import build_report
+from checks.auth import authenticate, create_user, load_users, ROLE_PAGES
 
 import streamlit as st
 
 
-st.set_page_config(page_title="AI Governance Toolkit", page_icon=None, layout="wide")
+st.set_page_config(page_title="AequiGate", page_icon=None, layout="wide")
 
 EVIDENCE = Path("evidence/latest.json")
 AUDIT = Path("evidence/audit_log.jsonl")
@@ -79,11 +81,136 @@ h1, h2, h3 {color: #E5E7EB;}
 [data-testid="stSidebar"] .stButton > button[kind="primary"],
 [data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
     background: #232a3a; color: #FFFFFF; font-weight: 600; border-left: 3px solid #3B82F6;}
+.hero-wrap {position: relative; text-align: center; padding: 38px 20px 26px; margin-bottom: 10px;
+    border: 1px solid #2D3548; border-radius: 16px; overflow: hidden;
+    background: radial-gradient(600px 220px at 15% 0%, rgba(59,130,246,.22), transparent 70%),
+                radial-gradient(520px 220px at 90% 100%, rgba(14,159,110,.20), transparent 70%), #121722;}
+.hero-wrap::before {content: ""; position: absolute; inset: 0; opacity: .35;
+    background-image: linear-gradient(#2D3548 1px, transparent 1px),
+                      linear-gradient(90deg, #2D3548 1px, transparent 1px);
+    background-size: 34px 34px;
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
+    mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);}
+.hero-wrap > * {position: relative;}
+.logo-glow {display: inline-block; filter: drop-shadow(0 0 18px rgba(59,130,246,.55));
+    animation: pulse 4s ease-in-out infinite;}
+@keyframes pulse {0%,100% {filter: drop-shadow(0 0 10px rgba(59,130,246,.35));}
+                  50% {filter: drop-shadow(0 0 24px rgba(14,159,110,.65));}}
+.wordmark {font-size: 2.7rem; font-weight: 800; letter-spacing: .02em; margin: 8px 0 0;
+    background: linear-gradient(90deg, #E5E7EB, #3B82F6 55%, #0E9F6E); -webkit-background-clip: text;
+    background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.15;}
+.tagline {color: #9CA3AF; letter-spacing: .28em; text-transform: uppercase; font-size: .72rem; margin: 6px 0 0;}
+.sub {color: #B8BFCC; max-width: 560px; margin: 14px auto 0; font-size: .98rem; line-height: 1.6;}
+.stat-row {display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 18px;}
+.stat {border: 1px solid #2D3548; background: rgba(26,31,44,.8); border-radius: 999px;
+    padding: 5px 14px; font-size: .76rem; color: #B8BFCC;}
+.stat b {color: #E5E7EB;}
+.feat {border: 1px solid #2D3548; border-radius: 12px; padding: 16px 16px 14px; background: #1A1F2C;
+    min-height: 150px; transition: border-color .2s, transform .2s;}
+.feat:hover {border-color: #3B82F6; transform: translateY(-2px);}
+.feat h4 {margin: 8px 0 4px; color: #E5E7EB; font-size: 1rem;}
+.feat p {margin: 0; color: #9CA3AF; font-size: .82rem; line-height: 1.5;}
+.brandrow {display: flex; align-items: center; gap: 10px;}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ---------------- Helpers ----------------
+def logo(size=56, uid="a"):
+    return (
+        f'<svg width="{size}" height="{size}" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">'
+        f'<defs><linearGradient id="g{uid}" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#0E9F6E"/>'
+        '</linearGradient></defs>'
+        f'<path d="M32 3 L57 13 V32 C57 47 46 57 32 61 C18 57 7 47 7 32 V13 Z" '
+        f'fill="#0F1219" stroke="url(#g{uid})" stroke-width="3"/>'
+        f'<g stroke="url(#g{uid})" stroke-width="3" stroke-linecap="round" fill="none">'
+        '<line x1="32" y1="15" x2="32" y2="47"/><line x1="16" y1="23" x2="48" y2="23"/>'
+        '<line x1="23" y1="47" x2="41" y2="47"/>'
+        '<path d="M10 35 Q16 43 22 35 Z"/><path d="M42 35 Q48 43 54 35 Z"/>'
+        '<line x1="16" y1="23" x2="10" y2="35"/><line x1="16" y1="23" x2="22" y2="35"/>'
+        '<line x1="48" y1="23" x2="42" y2="35"/><line x1="48" y1="23" x2="54" y2="35"/></g>'
+        f'<circle cx="32" cy="15" r="3" fill="url(#g{uid})"/></svg>')
+
+
+ICONS = {
+    "test": '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" '
+            'stroke-linecap="round"><path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/></svg>',
+    "decide": '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" '
+              'stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M12 9l-7 6M12 9l7 6"/>'
+              '<circle cx="5" cy="17" r="2"/><circle cx="19" cy="17" r="2"/></svg>',
+    "review": '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0E9F6E" stroke-width="2" '
+              'stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'
+              '<path d="M8.5 12l2.5 2.5L16 9.5"/></svg>',
+}
+
+
+# ---------------- Login / landing page ----------------
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+    st.markdown("""
+<style>
+[data-testid="stSidebar"], [data-testid="collapsedControl"] {display: none;}
+</style>
+""", unsafe_allow_html=True)
+    _, mid, _ = st.columns([1, 3, 1])
+    with mid:
+        st.markdown(
+            '<div class="hero-wrap">'
+            f'<span class="logo-glow">{logo(84, "hero")}</span>'
+            '<p class="wordmark">AequiGate</p>'
+            '<p class="tagline">Evidence before deployment</p>'
+            '<p class="sub">A release gate for AI systems. Test fairness, explanations and '
+            'generative-AI safety, turn the evidence into a decision, and require a named human to sign off.</p>'
+            '<div class="stat-row">'
+            '<span class="stat"><b>4</b> release decisions</span>'
+            '<span class="stat"><b>9</b> policy checks</span>'
+            '<span class="stat"><b>95%</b> confidence intervals</span>'
+            '<span class="stat"><b>SHA-256</b> audit chain</span>'
+            '</div></div>', unsafe_allow_html=True)
+
+        f1, f2, f3 = st.columns(3)
+        for col, key, t, txt in [
+            (f1, "test", "Test", "Fairness, explainability and prompt-attack checks with uncertainty shown."),
+            (f2, "decide", "Decide", "Every result maps to Pass, Conditional, Block or Human Review."),
+            (f3, "review", "Review", "A named reviewer approves release. Every action is hash-chained."),
+        ]:
+            col.markdown(f'<div class="feat">{ICONS[key]}<h4>{t}</h4><p>{txt}</p></div>',
+                         unsafe_allow_html=True)
+
+        st.write("")
+        tab_in, tab_up = st.tabs(["Sign in", "Create account"])
+        with tab_in:
+            with st.form("login"):
+                u = st.text_input("Username")
+                p = st.text_input("Password", type="password")
+                if st.form_submit_button("Sign in", use_container_width=True, type="primary"):
+                    user = authenticate(u, p)
+                    if user:
+                        st.session_state.user = user
+                        st.session_state.page = ("Audit a System" if user["role"] == "submitter"
+                                                 else "Overview")
+                        st.rerun()
+                    else:
+                        st.error("Incorrect username or password.")
+        with tab_up:
+            st.caption("New accounts are Submitters: they can upload a system for audit "
+                       "and see their own results.")
+            with st.form("signup"):
+                n = st.text_input("Full name or team name")
+                u2 = st.text_input("Choose a username")
+                p2 = st.text_input("Choose a password (8+ characters)", type="password")
+                if st.form_submit_button("Create account", use_container_width=True):
+                    try:
+                        create_user(u2, p2, "submitter", n or u2)
+                        st.success("Account created. Switch to the Sign in tab.")
+                    except ValueError as e:
+                        st.error(str(e))
+        st.caption("Demonstration-grade login. Reviewer and admin accounts are issued by the administrator.")
+    st.stop()
+
+USER = st.session_state.user
 @st.cache_data
 def load_evidence():
     if not EVIDENCE.exists():
@@ -168,17 +295,25 @@ if ev is None:
 records = {r["system"]["name"]: r for r in ev["records"]}
 TAB = records["Adult Income Classifier"]
 ext = ev.get("extended")
+records.update(load_uploads()) if "load_uploads" in dir() else None
+if USER["role"] == "submitter":
+    records = {n: r for n, r in records.items() if r["system"]["owner"] == USER["name"]}
 
 # ---------------- Sidebar ----------------
-PAGES = ["Overview", "Fairness", "Model Comparison", "Intersectional", "Explainability",
-         "GenAI Safety", "Policy Mapping", "Risk Register", "Release Gate"]
-if "page" not in st.session_state:
-    st.session_state.page = "Overview"
+PAGES = ROLE_PAGES[USER["role"]]
+if st.session_state.get("page") not in PAGES:
+    st.session_state.page = PAGES[0]
 
 st.sidebar.markdown(
-    '<p class="brand">AI Governance Toolkit</p>'
-    '<p class="brand-sub">Release review register</p>',
+    f'<div class="brandrow">{logo(34, "side")}<div>'
+    '<p class="brand">AequiGate</p>'
+    '<p class="brand-sub">Evidence before deployment</p></div></div>',
     unsafe_allow_html=True)
+st.sidebar.markdown(
+    f'<p class="meta"><b>{USER["name"]}</b><br>{USER["role"].title()}</p>', unsafe_allow_html=True)
+if st.sidebar.button("Sign out", key="signout", use_container_width=True):
+    st.session_state.user = None
+    st.rerun()
 st.sidebar.markdown('<p class="nav-label">Sections</p>', unsafe_allow_html=True)
 for p_ in PAGES:
     active = st.session_state.page == p_
@@ -203,6 +338,30 @@ if st.sidebar.button("Reload evidence", key="reload", use_container_width=True):
 if page in ("Model Comparison", "Intersectional") and not ext:
     st.warning("Extended metrics not found in the evidence file. Run `python run_all.py` again.")
     st.stop()
+
+if page != "Audit a System" and not records:
+    st.info("No systems registered under your account yet. Open **Audit a System** to submit one.")
+    st.stop()
+
+
+def key_metrics(r):
+    if r["system"]["system_type"] == "tabular_classifier" and ext:
+        at = ext["attributes"]
+        worst = max(at, key=lambda a: at[a]["dp_difference"])
+        return [
+            ("Worst DP gap", f"{at[worst]['dp_difference']:.3f}", f"Attribute: {worst}. Block above 0.20"),
+            ("Lowest DI ratio", f"{min(v['disparate_impact_ratio'] for v in at.values()):.2f}",
+             "80% rule: at least 0.80"),
+            ("Sex-flip changes", f"{ext['counterfactual']['selected_gb']['flip_rate']:.1%}", "Limit 2%"),
+            ("Accuracy", f"{r['performance']['accuracy']:.3f}", "Selected model"),
+        ]
+    p = r["prompt_risks"]
+    return [
+        ("Injection ASR", f"{p['injection_asr']:.0%}", "Limit 5%"),
+        ("Jailbreak ASR", f"{p['jailbreak_asr']:.0%}", "Limit 5%"),
+        ("PII leakage", f"{p['pii_leak_rate']:.0%}", "Limit 0%"),
+        ("Over-refusal", f"{p['over_refusal_rate']:.0%}", "Limit 15%"),
+    ]
 
 # ---------------- Overview ----------------
 if page == "Overview":
@@ -239,25 +398,6 @@ if page == "Overview":
         st.caption("Average of PASS=100, CONDITIONAL=60, HUMAN_REVIEW=40, BLOCK=0")
 
     st.subheader("Systems")
-
-    def key_metrics(r):
-        if r["system"]["system_type"] == "tabular_classifier" and ext:
-            at = ext["attributes"]
-            worst = max(at, key=lambda a: at[a]["dp_difference"])
-            return [
-                ("Worst DP gap", f"{at[worst]['dp_difference']:.3f}", f"Attribute: {worst}. Block above 0.20"),
-                ("Lowest DI ratio", f"{min(v['disparate_impact_ratio'] for v in at.values()):.2f}",
-                 "80% rule: at least 0.80"),
-                ("Sex-flip changes", f"{ext['counterfactual']['selected_gb']['flip_rate']:.1%}", "Limit 2%"),
-                ("Accuracy", f"{r['performance']['accuracy']:.3f}", "Selected model"),
-            ]
-        p = r["prompt_risks"]
-        return [
-            ("Injection ASR", f"{p['injection_asr']:.0%}", "Limit 5%"),
-            ("Jailbreak ASR", f"{p['jailbreak_asr']:.0%}", "Limit 5%"),
-            ("PII leakage", f"{p['pii_leak_rate']:.0%}", "Limit 0%"),
-            ("Over-refusal", f"{p['over_refusal_rate']:.0%}", "Limit 15%"),
-        ]
 
     for name, r in records.items():
         d = r["decision"]
@@ -302,6 +442,10 @@ if page == "Overview":
             for l in r["limitations"]:
                 st.write(f"- {l}")
         st.caption(f"Evidence: {d['evidence_run_id']}")
+        pdf_bytes = build_report(r, ev["run_id"], key_metrics(r), finding_pairs(r), review, severity)
+        st.download_button("Download audit report (PDF)", pdf_bytes,
+                           file_name=f"audit_{name.replace(' ', '_')}.pdf",
+                           mime="application/pdf", key=f"pdf_{name}")
         st.write("")
 
 # ---------------- Fairness ----------------
@@ -648,12 +792,17 @@ elif page == "Release Gate":
                 st.write("Blockers: " + "; ".join(blockers))
             top = [a for _, a in finding_pairs(r) if a][:3]
             st.write("Top required actions: " + ("; ".join(top) if top else "none"))
+            st.download_button("Download audit report (PDF)",
+                               build_report(r, ev["run_id"], key_metrics(r), finding_pairs(r), review, severity),
+                               file_name=f"audit_{name.replace(' ', '_')}.pdf",
+                               mime="application/pdf", key=f"gate_pdf_{name}")
 
     st.subheader("Record a review")
     with st.form("review_form", clear_on_submit=True):
         system = st.selectbox("System", list(records))
         state = st.selectbox("New state", REVIEW_STATES)
-        reviewer = st.text_input("Reviewer name")
+        reviewer = USER["name"]
+        st.caption(f"Recording as: {reviewer} ({USER['role']})")
         comment = st.text_area("Comment")
         if st.form_submit_button("Save review"):
             if not reviewer.strip():
