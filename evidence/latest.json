@@ -1,6 +1,6 @@
 {
-  "run_id": "run_20261024_092856",
-  "timestamp": "2026-10-24T10:16:46.433460",
+  "run_id": "run_20261026_224012",
+  "timestamp": "2026-10-26T23:29:48.987028",
   "records": [
     {
       "system": {
@@ -51,7 +51,7 @@
           "onehotencoder__occupation_Prof-specialty",
           "onehotencoder__occupation_Other-service"
         ],
-        "stability": 0.996,
+        "stability": 0.997,
         "flagged_proxies": [
           "relationship",
           "marital-status",
@@ -99,8 +99,8 @@
           "Review intersectional groups manually",
           "Remove the sex feature and its proxies, then re-test"
         ],
-        "evidence_run_id": "run_20261024_092856",
-        "decided_at": "2026-10-24T09:38:26.619169"
+        "evidence_run_id": "run_20261026_224012",
+        "decided_at": "2026-10-26T22:51:19.488809"
       }
     },
     {
@@ -138,8 +138,8 @@
           "All checks within thresholds"
         ],
         "corrective_actions": [],
-        "evidence_run_id": "run_20261024_092856",
-        "decided_at": "2026-10-24T10:16:46.431445"
+        "evidence_run_id": "run_20261026_224012",
+        "decided_at": "2026-10-26T23:29:48.985031"
       }
     }
   ],
