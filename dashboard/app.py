@@ -6,7 +6,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from checks.audit_chain import append_entry, verify_chain
 import streamlit as st
+
 
 st.set_page_config(page_title="AI Governance Toolkit", page_icon=None, layout="wide")
 
@@ -622,14 +626,24 @@ elif page == "Release Gate":
                 entry = {"time": datetime.now().isoformat(timespec="seconds"), "system": system,
                          "state": state, "reviewer": reviewer.strip(), "comment": comment.strip(),
                          "run_id": ev["run_id"]}
-                with AUDIT.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                append_entry(entry)
                 st.success("Saved to audit log.")
                 st.rerun()
 
-    st.subheader("Audit log")
+        st.subheader("Audit log")
+    ok_chain, msg, bad = verify_chain()
+    if ok_chain:
+        st.success(f"Integrity check passed. {msg}")
+    else:
+        st.error(f"INTEGRITY CHECK FAILED. {msg}")
     log = read_audit()
     if log:
-        st.dataframe(pd.DataFrame(log).iloc[::-1], hide_index=True, use_container_width=True)
+        df_log = pd.DataFrame(log).iloc[::-1]
+        if "hash" in df_log.columns:
+            df_log["hash"] = df_log["hash"].astype(str).str[:12]
+            df_log = df_log.drop(columns=["prev_hash"], errors="ignore")
+        st.dataframe(df_log, hide_index=True, use_container_width=True)
+        st.caption("Each entry stores a SHA-256 hash of its contents plus the previous entry's hash. "
+                   "Editing or deleting any entry breaks every hash after it.")
     else:
         st.info("No reviews recorded yet.")
