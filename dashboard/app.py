@@ -9,6 +9,8 @@ import plotly.io as pio
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from checks.audit_chain import append_entry, verify_chain
+from checks.policy_map import POLICY, match
+
 import streamlit as st
 
 
@@ -169,7 +171,7 @@ ext = ev.get("extended")
 
 # ---------------- Sidebar ----------------
 PAGES = ["Overview", "Fairness", "Model Comparison", "Intersectional", "Explainability",
-         "GenAI Safety", "Risk Register", "Release Gate"]
+         "GenAI Safety", "Policy Mapping", "Risk Register", "Release Gate"]
 if "page" not in st.session_state:
     st.session_state.page = "Overview"
 
@@ -278,12 +280,18 @@ if page == "Overview":
             st.write("No findings. All checks are within thresholds.")
         for reason, action in findings[:3]:
             st.write(f"**[{severity(reason)}]** {reason}")
+            tags = match(reason)
+            if tags:
+                st.caption("Supports: " + "; ".join(f"NIST {t['nist'].split(' (')[0]}" for t in tags))
             if action:
                 st.caption(f"Action: {action}")
         if len(findings) > 3:
             with st.expander(f"Show all {len(findings)} findings"):
                 for reason, action in findings[3:]:
                     st.write(f"**[{severity(reason)}]** {reason}")
+                    tags = match(reason)
+                    if tags:
+                        st.caption("Supports: " + "; ".join(f"NIST {t['nist'].split(' (')[0]}" for t in tags))
                     if action:
                         st.caption(f"Action: {action}")
         with st.expander("Documented assumptions and limitations"):
@@ -474,82 +482,110 @@ elif page == "Explainability":
 elif page == "GenAI Safety":
     st.title("Generative AI Safety Evaluation")
     s = ev["genai_summary"]
+    b, h = s["baseline"], s["hardened"]
     cats = ["injection", "jailbreak", "pii_leak", "bias", "hallucination"]
 
-    def asr(mode, cat):
-        v = s[mode][f"{cat}_asr"]
-        return v["rate"] if isinstance(v, dict) else v
-
-    def ci_str(mode, key):
-        v = s[mode].get(key)
-        if v is None:
-            return ""
-        if isinstance(v, dict):
-            return f"95% CI [{v['ci'][0]:.0%}–{v['ci'][1]:.0%}], n={v['n']}"
-        return ""
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Injection ASR (hardened)", f"{asr('hardened','injection'):.0%}",
-              delta=f"{asr('hardened','injection') - asr('baseline','injection'):+.0%} vs baseline",
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Injection ASR", f"{h['injection_asr']:.0%}",
+              delta=f"{h['injection_asr'] - b['injection_asr']:+.0%} vs baseline", delta_color="inverse")
+    c2.metric("Held-out ASR", f"{h['heldout_asr']['rate']:.0%}",
+              delta=f"{h['heldout_asr']['rate'] - b['heldout_asr']['rate']:+.0%} vs baseline",
               delta_color="inverse")
-    c2.metric("Jailbreak ASR (hardened)", f"{asr('hardened','jailbreak'):.0%}",
-              delta=f"{asr('hardened','jailbreak') - asr('baseline','jailbreak'):+.0%} vs baseline",
+    c3.metric("Over-refusal", f"{h['over_refusal_rate']:.0%}",
+              delta=f"{h['over_refusal_rate'] - b['over_refusal_rate']:+.0%} vs baseline",
               delta_color="inverse")
-    c3.metric("Over-refusal (hardened)", f"{s['hardened']['over_refusal_rate']:.0%}",
-              delta=f"{s['hardened']['over_refusal_rate'] - s['baseline']['over_refusal_rate']:+.0%} vs baseline",
-              delta_color="inverse")
+    rq = h.get("refusal_quality")
+    c4.metric("Refusal quality", f"{rq:.2f}" if rq is not None else "n/a",
+              help="1 = refuses and redirects helpfully, 0 = empty or cold")
 
-    rows = [{"category": c, "mode": m_, "ASR": asr(m_, c)} for c in cats for m_ in ("baseline", "hardened")]
-    fig = px.bar(pd.DataFrame(rows), x="category", y="ASR", color="mode", barmode="group",
-                 text_auto=".0%", color_discrete_map={"baseline": RED, "hardened": TEAL})
-    fig.update_layout(height=380, yaxis_tickformat=".0%")
+    st.subheader("Attack success by category, with 95% intervals")
+    rows = []
+    for mode, d_ in (("baseline", b), ("hardened", h)):
+        for c in cats:
+            ci = d_.get(f"{c}_ci", {"rate": d_[f"{c}_asr"], "ci": [d_[f"{c}_asr"]] * 2, "n": 0})
+            rows.append({"category": c, "mode": mode, "rate": ci["rate"], "lo": ci["ci"][0],
+                         "hi": ci["ci"][1], "n": ci["n"]})
+    dfc = pd.DataFrame(rows)
+    fig = go.Figure()
+    for mode, color in (("baseline", RED), ("hardened", TEAL)):
+        d_ = dfc[dfc["mode"] == mode]
+        fig.add_trace(go.Bar(
+            name=mode, x=d_["category"], y=d_["rate"], marker_color=color,
+            text=[f"{v:.0%}" for v in d_["rate"]], textposition="outside",
+            error_y=dict(type="data", symmetric=False, color=TEXT,
+                         array=(d_["hi"] - d_["rate"]).tolist(),
+                         arrayminus=(d_["rate"] - d_["lo"]).tolist())))
+    fig.update_layout(barmode="group", height=380, yaxis_tickformat=".0%")
     show_chart(fig)
-    st.caption("Rates are indicative at this prompt-suite size. "
-               "Intervals are wide — see the CI column below.")
+    st.caption("n per category: " + ", ".join(
+        f"{c} {int(dfc[(dfc['mode']=='hardened')&(dfc['category']==c)]['n'].iloc[0])}" for c in cats)
+        + ". Zero successes means none observed, not zero risk: with n=24 the true rate could still be near 12%.")
 
-    # Extended metrics table (only shown when new keys are present)
-    ext_keys = ["heldout_asr", "multilingual_asr", "multilingual_over_refusal"]
-    if any(k in s["hardened"] for k in ext_keys):
-        st.subheader("Extended metrics (held-out and multilingual splits)")
-        ext_rows = []
-        for key in ext_keys + ["over_refusal_ci"]:
-            v_h = s["hardened"].get(key)
-            v_b = s["baseline"].get(key)
-            if v_h is None:
-                continue
-            label = key.replace("_", " ").title()
-            b_rate = v_b["rate"] if isinstance(v_b, dict) else (v_b or 0)
-            h_rate = v_h["rate"] if isinstance(v_h, dict) else (v_h or 0)
-            h_ci = f"[{v_h['ci'][0]:.0%}–{v_h['ci'][1]:.0%}]" if isinstance(v_h, dict) else ""
-            ext_rows.append({"Metric": label, "Baseline": f"{b_rate:.0%}",
-                             "Hardened": f"{h_rate:.0%}", "Hardened 95% CI": h_ci,
-                             "n": v_h.get("n", "") if isinstance(v_h, dict) else ""})
-        st.dataframe(pd.DataFrame(ext_rows), hide_index=True, use_container_width=True)
+    st.subheader("Does it generalise? Main vs held-out vs Hindi/Punjabi")
+    split_rows = []
+    for mode, d_ in (("baseline", b), ("hardened", h)):
+        split_rows += [
+            {"split": "Main prompts", "mode": mode,
+             "rate": (d_["injection_asr"] + d_["jailbreak_asr"]) / 2},
+            {"split": "Held-out wording", "mode": mode, "rate": d_["heldout_asr"]["rate"]},
+            {"split": "Hindi / Punjabi", "mode": mode, "rate": d_["multilingual_asr"]["rate"]},
+        ]
+    fig = px.bar(pd.DataFrame(split_rows), x="split", y="rate", color="mode", barmode="group",
+                 text_auto=".0%", color_discrete_map={"baseline": RED, "hardened": TEAL})
+    fig.update_layout(height=340, yaxis_tickformat=".0%", xaxis_title=None)
+    show_chart(fig)
+    st.caption("Held-out prompts use wording the input filter was not built from. "
+               "Multilingual prompts test whether English keyword filters can be bypassed.")
 
-        rq_h = s["hardened"].get("refusal_quality")
-        rq_b = s["baseline"].get("refusal_quality")
-        if rq_h is not None:
-            st.metric("Refusal quality (hardened)", f"{rq_h:.2f}",
-                      delta=f"{rq_h - (rq_b or 0):+.2f} vs baseline",
-                      help="0 = cold/empty refusal, 1 = refuses and redirects helpfully")
+    runs = ev["genai_rows"]
+    n_calls = len(runs)
+    n_err = sum(1 for r in runs if r.get("api_error"))
+    st.caption(f"Evidence: {n_calls} model calls, {n_err} API errors excluded.")
 
-    rws = ev["genai_rows"]
     st.subheader("Successful attacks (failure patterns)")
-    fails = [r for r in rws if r["attack_success"]]
+    seen, fails = set(), []
+    for r in runs:
+        k = (r["mode"], r["id"])
+        if r["attack_success"] and k not in seen:
+            seen.add(k)
+            fails.append(r)
     if not fails:
         st.success("No successful attacks recorded.")
     for r in fails:
-        split_tag = f" · {r['split']}" if r.get("split", "main") != "main" else ""
-        with st.expander(f"[{r['mode']}] {r['id']} · {r['category']}{split_tag}"):
+        with st.expander(f"[{r['mode']}] {r['id']} · {r['category']}"):
             st.write("**Prompt:**", r["prompt"])
             st.write("**Reply:**", r["reply"])
+
     st.subheader("Benign prompts refused by the hardened bot (over-refusal)")
-    refused = [r for r in rws if r["mode"] == "hardened" and r["category"] == "benign" and r["refused"]]
+    refused = [r for r in runs if r["mode"] == "hardened" and r["category"] == "benign" and r["refused"]]
     if not refused:
         st.success("None.")
-    for r in refused:
+    for r in refused[:10]:
         with st.expander(f"{r['id']}: {r['prompt']}"):
             st.write(r["reply"])
+
+# ---------------- Policy Mapping ----------------
+elif page == "Policy Mapping":
+    st.title("Policy Mapping")
+    st.caption("Each automated check is linked to the framework principle it supports, "
+               "with the rule that turns it into a decision.")
+    all_reasons = [rs for r in records.values() for rs, _ in finding_pairs(r)]
+    rows = []
+    for p in POLICY:
+        hits = [x for x in all_reasons if any(k in x.lower() for k in p["keys"])] if p["keys"] else []
+        rows.append({
+            "Check": p["check"],
+            "NIST AI RMF": p["nist"],
+            "EU AI Act": p["eu"],
+            "India AI Governance Guidelines": p["india"],
+            "Decision rule": p["rule"],
+            "Open findings": len(hits) if p["keys"] else "n/a",
+        })
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    st.info("Verify clause numbers against the current published texts before submitting. "
+            "This mapping is the project's interpretation, not legal advice. The 80% rule "
+            "(disparate impact) comes from US employment guidance and is used here as a "
+            "common screening threshold.")
 
 # ---------------- Risk Register ----------------
 elif page == "Risk Register":
