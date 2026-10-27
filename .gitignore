@@ -5,3 +5,9 @@ __pycache__/
 .streamlit/secrets.toml
 evidence/audit_log.jsonl
 evidence/users.json
+.env
+evidence/users.json
+evidence/audit_log.jsonl
+evidence/risk_register.json
+evidence/uploaded_systems.json
+sample_predictions.csv
