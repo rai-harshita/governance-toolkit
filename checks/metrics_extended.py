@@ -3,6 +3,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parent.parent
 from fairlearn.metrics import (
     MetricFrame, selection_rate, true_positive_rate, false_positive_rate,
     demographic_parity_difference, demographic_parity_ratio, equalized_odds_difference,
@@ -169,7 +171,8 @@ if __name__ == "__main__":
         print(f"{name:<16} flip rate {c['flip_rate']:.2%}  mean prob change {c['mean_abs_prob_change']:.3f}"
               f"  max {c['max_abs_prob_change']:.3f}")
 
-    Path("evidence").mkdir(exist_ok=True)
-    Path("evidence/metrics_extended.json").write_text(
+    evidence_dir = ROOT / "evidence"
+    evidence_dir.mkdir(exist_ok=True)
+    (evidence_dir / "metrics_extended.json").write_text(
         json.dumps(to_py(r), indent=2), encoding="utf-8")
     print("\nSaved evidence/metrics_extended.json")

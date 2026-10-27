@@ -4,8 +4,8 @@ from schema.governance_record import Decision
 with open("configs/rules.yaml", encoding="utf-8") as f:
     RULES = yaml.safe_load(f)
 
+
 def decide_extended(ext: dict, rules: dict = RULES) -> dict:
-    """Findings from the extended metrics. Returns flags, reasons, actions."""
     flags, reasons, actions = set(), [], []
     f = rules["fairness"]
 
@@ -33,37 +33,30 @@ def decide_extended(ext: dict, rules: dict = RULES) -> dict:
             reasons.append(f"{attr}: small groups {m['small_groups']} give unreliable estimates")
             actions.append("Collect more data or review these groups manually")
 
-    inter = ext["intersectional"]
-    if inter["small_groups"]:
+    inter = ext.get("intersectional", {})
+    if inter.get("small_groups"):
         flags.add("HUMAN_REVIEW")
         reasons.append(f"Intersectional audit has {len(inter['small_groups'])} groups under 100 rows")
         actions.append("Review intersectional groups manually")
 
-    cf = ext["counterfactual"]["selected_gb"]["flip_rate"]
+    cf = ext.get("counterfactual", {}).get("selected_gb", {}).get("flip_rate", 0.0)
     if cf > f["counterfactual_max_flip"]:
         flags.add("CONDITIONAL")
         reasons.append(f"Counterfactual: flipping sex changes {cf:.1%} of decisions")
         actions.append("Remove the sex feature and its proxies, then re-test")
     return {"flags": flags, "reasons": reasons, "actions": actions}
 
+
 def decide(results: dict, run_id: str, rules: dict = RULES, extended: dict = None) -> Decision:
-    """results may contain: fairness, explanation, genai (each optional).
-    Returns a Decision. Severity order: BLOCK > HUMAN_REVIEW > CONDITIONAL > PASS."""
-    reasons, actions = [], []
-    flags = set()
+    reasons, actions, flags = [], [], set()
+    fair, expl, gen = results.get("fairness"), results.get("explanation"), results.get("genai")
 
-    fair = results.get("fairness")
-    expl = results.get("explanation")
-    gen = results.get("genai")
-
-    # ---- Fairness ----
     if fair:
         sizes = fair.get("group_sizes", {})
         if sizes and min(sizes.values()) < rules["min_group_size"]:
             flags.add("HUMAN_REVIEW")
             reasons.append(f"Insufficient data: smallest subgroup has {min(sizes.values())} rows")
             actions.append("Collect more data for the small subgroup or review manually")
-
         dp = fair["dp_difference"]
         if dp > rules["fairness"]["dp_block"]:
             flags.add("BLOCK")
@@ -73,7 +66,6 @@ def decide(results: dict, run_id: str, rules: dict = RULES, extended: dict = Non
             flags.add("CONDITIONAL")
             reasons.append(f"DP gap {dp:.3f} exceeds {rules['fairness']['dp_conditional']}")
             actions.append("Apply threshold mitigation, then re-check")
-
         eo = fair.get("eo_difference")
         if eo is not None and eo > rules["fairness"]["eo_conditional"]:
             flags.add("CONDITIONAL")
@@ -84,7 +76,6 @@ def decide(results: dict, run_id: str, rules: dict = RULES, extended: dict = Non
         reasons.append("Fairness results missing")
         actions.append("Run the fairness check")
 
-    # ---- Explainability ----
     if expl:
         if expl["stability"] < rules["explanation"]["min_stability"]:
             flags.add("CONDITIONAL")
@@ -97,53 +88,55 @@ def decide(results: dict, run_id: str, rules: dict = RULES, extended: dict = Non
             reasons.append(f"Strong proxy features for a sensitive attribute: {high}")
             actions.append("Remove or audit proxy features; document the justification")
 
-    # ---- GenAI safety ----
     if gen:
-        if gen["injection_asr"] > rules["genai"]["max_injection_asr"]:
+        g = rules["genai"]
+        if gen["injection_asr"] > g["max_injection_asr"]:
             flags.add("HUMAN_REVIEW")
             reasons.append(f"Injection ASR {gen['injection_asr']:.2f} above limit")
             actions.append("Harden the system prompt and add input/output filters")
-        if gen["jailbreak_asr"] > rules["genai"]["max_jailbreak_asr"]:
+        if gen["jailbreak_asr"] > g["max_jailbreak_asr"]:
             flags.add("HUMAN_REVIEW")
             reasons.append(f"Jailbreak ASR {gen['jailbreak_asr']:.2f} above limit")
             actions.append("Add jailbreak test cases and refusal rules")
-        if gen.get("pii_leak_asr", 0) > rules["genai"]["max_pii_leak"]:
+        if gen.get("pii_leak_asr", 0) > g["max_pii_leak"]:
             flags.add("BLOCK")
             reasons.append("PII leakage detected")
             actions.append("Block release until PII leakage is fixed")
         held = gen.get("heldout_asr")
-        if held and held["rate"] > rules["genai"]["max_injection_asr"]:
+        if isinstance(held, dict) and held.get("rate", 0) > g["max_injection_asr"]:
             flags.add("HUMAN_REVIEW")
-            reasons.append(f"Held-out attack success {held['rate']:.0%} (95% CI {held['ci'][0]:.0%}-{held['ci'][1]:.0%}, n={held['n']}) above limit")
+            reasons.append(f"Held-out attack success {held['rate']:.0%} "
+                           f"(95% CI {held['ci'][0]:.0%}-{held['ci'][1]:.0%}, n={held['n']}) above limit")
             actions.append("Generalise filters beyond known attack phrases")
         ml = gen.get("multilingual_asr")
-        if ml and ml["rate"] > rules["genai"]["max_injection_asr"]:
+        if isinstance(ml, dict) and ml.get("rate", 0) > g["max_injection_asr"]:
             flags.add("HUMAN_REVIEW")
             reasons.append(f"Hindi/Punjabi attack success {ml['rate']:.0%} (n={ml['n']}) above limit")
             actions.append("Add multilingual input and output filtering")
-        if gen["over_refusal_rate"] > rules["genai"]["max_over_refusal"]:
+        if gen["over_refusal_rate"] > g["max_over_refusal"]:
             flags.add("CONDITIONAL")
             reasons.append(f"Over-refusal {gen['over_refusal_rate']:.2f} above limit")
             actions.append("Relax filters that block normal questions")
+
     if extended:
         ext = decide_extended(extended, rules)
         flags |= ext["flags"]
         reasons += ext["reasons"]
         actions += ext["actions"]
-    # ---- Final status ----
-    for status in ("BLOCK", "HUMAN_REVIEW", "CONDITIONAL"):
-        if status in flags:
+
+    status = "PASS"
+    for s in ("BLOCK", "HUMAN_REVIEW", "CONDITIONAL"):
+        if s in flags:
+            status = s
             break
-    else:
-        status = "PASS"
+    if status == "PASS":
         reasons.append("All checks within thresholds")
 
-    # Confidence: lower when data is missing or review is needed
-    confidence = 0.9
-    if "HUMAN_REVIEW" in flags:
+    if status == "HUMAN_REVIEW":
         confidence = 0.5
-    elif not (fair and expl) and not gen:
-        confidence = 0.6
-
+    elif "HUMAN_REVIEW" in flags:
+        confidence = 0.7      # decision is firm, but some groups need manual review
+    else:
+        confidence = 0.9
     return Decision(status=status, confidence=confidence, reasons=reasons,
                     corrective_actions=actions, evidence_run_id=run_id)

@@ -2,7 +2,8 @@ import hashlib
 import json
 from pathlib import Path
 
-AUDIT = Path("evidence/audit_log.jsonl")
+ROOT = Path(__file__).resolve().parent.parent
+AUDIT = ROOT / "evidence" / "audit_log.jsonl"
 GENESIS = "0" * 64
 
 

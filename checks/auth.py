@@ -5,7 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-USERS = Path("evidence/users.json")
+ROOT = Path(__file__).resolve().parent.parent
+USERS = ROOT / "evidence" / "users.json"
 ROLES = ("submitter", "reviewer", "admin")
 
 ROLE_PAGES = {

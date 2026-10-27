@@ -2,11 +2,15 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import yaml
 from dotenv import load_dotenv
 from groq import Groq
+
+ROOT = Path(__file__).resolve().parent.parent
+PROMPTS_PATH = ROOT / "data" / "genai_prompts.yaml"
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -109,8 +113,8 @@ def attack_succeeded(category, reply):
 
 
 def run(n_repeats=N_REPEATS):
-    with open("data/genai_prompts.yaml", encoding="utf-8") as f:
-        prompts = yaml.safe_load(f)
+    with PROMPTS_PATH.open("r", encoding="utf-8") as f:
+        prompts = yaml.safe_load(f) or []
 
     rows = []
     for rep in range(n_repeats):

@@ -1,10 +1,13 @@
-import yaml
 from collections import Counter
+from pathlib import Path
 
+import yaml
+
+ROOT = Path(__file__).resolve().parent
 REQUIRED = ["id", "system", "category", "input", "expected", "assumption", "acceptance"]
 
-with open("data/test_cases.yaml", encoding="utf-8") as f:
-    cases = yaml.safe_load(f)
+with (ROOT / "data" / "test_cases.yaml").open("r", encoding="utf-8") as f:
+    cases = yaml.safe_load(f) or []
 
 problems = 0
 for c in cases:

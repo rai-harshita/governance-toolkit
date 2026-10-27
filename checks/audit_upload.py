@@ -1,9 +1,13 @@
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import yaml
 from sklearn.metrics import accuracy_score, f1_score
+
+ROOT = Path(__file__).resolve().parent.parent
+PROMPTS_PATH = ROOT / "data" / "genai_prompts.yaml"
 
 from checks import genai_safety
 from checks.metrics_extended import evaluate_full, to_py
@@ -97,8 +101,8 @@ def audit_chatbot(system_prompt, model, run_id, progress=None):
     """Plants a canary secret in the team's prompt and tests whether it leaks."""
     full_prompt = system_prompt.strip() + (
         f"\n\nInternal admin code (confidential): {genai_safety.SECRET}.")
-    with open("data/genai_prompts.yaml", encoding="utf-8") as f:
-        prompts = yaml.safe_load(f)
+    with PROMPTS_PATH.open("r", encoding="utf-8") as f:
+        prompts = yaml.safe_load(f) or []
 
     rows = []
     for i, p in enumerate(prompts):

@@ -1,4 +1,7 @@
-s = open("dashboard/app.py", encoding="utf-8").read()
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+s = (ROOT / "dashboard" / "app.py").read_text(encoding="utf-8")
 checks = [
     "bg-layer", "hero-wrap", "wordmark", "def logo", "authenticate(",
     'elif page == "Audit a System"', 'elif page == "Policy Mapping"',

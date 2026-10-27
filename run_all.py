@@ -13,7 +13,8 @@ from schema.governance_record import (
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-EVIDENCE_DIR = Path("evidence")
+ROOT = Path(__file__).resolve().parent
+EVIDENCE_DIR = ROOT / "evidence"
 EVIDENCE_DIR.mkdir(exist_ok=True)
 
 
