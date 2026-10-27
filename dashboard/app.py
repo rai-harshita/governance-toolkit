@@ -111,6 +111,61 @@ h1, h2, h3 {color: #E5E7EB;}
 .feat h4 {margin: 8px 0 4px; color: #E5E7EB; font-size: 1rem;}
 .feat p {margin: 0; color: #9CA3AF; font-size: .82rem; line-height: 1.5;}
 .brandrow {display: flex; align-items: center; gap: 10px;}
+/* ---------- Animated background ---------- */
+.stApp {background: #0F1219;}
+.bg-layer {position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;}
+.bg-layer .orb {position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5;}
+.orb.o1 {width: 420px; height: 420px; background: #3B82F6; top: -120px; left: -100px;
+    animation: drift1 22s ease-in-out infinite;}
+.orb.o2 {width: 380px; height: 380px; background: #0E9F6E; bottom: -120px; right: -80px;
+    animation: drift2 26s ease-in-out infinite;}
+.orb.o3 {width: 260px; height: 260px; background: #7C3AED; top: 45%; left: 55%; opacity: .28;
+    animation: drift3 30s ease-in-out infinite;}
+@keyframes drift1 {0%,100% {transform: translate(0,0);} 50% {transform: translate(180px,120px);}}
+@keyframes drift2 {0%,100% {transform: translate(0,0);} 50% {transform: translate(-200px,-90px);}}
+@keyframes drift3 {0%,100% {transform: translate(0,0);} 50% {transform: translate(-140px,100px);}}
+.bg-grid {position: absolute; inset: -40px; opacity: .22;
+    background-image: linear-gradient(#2D3548 1px, transparent 1px),
+                      linear-gradient(90deg, #2D3548 1px, transparent 1px);
+    background-size: 44px 44px; animation: gridmove 14s linear infinite;
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%);
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%);}
+@keyframes gridmove {to {transform: translate(44px, 44px);}}
+[data-testid="stAppViewContainer"] > .main, section.main, [data-testid="stMain"] {position: relative; z-index: 1;}
+/* ---------- Side decorations ---------- */
+.side {position: fixed; top: 0; bottom: 0; width: 15vw; z-index: 0; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;}
+.side.left {left: 0;} .side.right {right: 0;}
+.bars {display: flex; align-items: flex-end; gap: 7px; height: 220px; opacity: .55;}
+.bars span {width: 9px; border-radius: 3px 3px 0 0;
+    background: linear-gradient(180deg, #3B82F6, rgba(14,159,110,.35));
+    animation: rise 3.2s ease-in-out infinite;}
+.bars span:nth-child(1) {height: 40%; animation-delay: 0s;}
+.bars span:nth-child(2) {height: 75%; animation-delay: .3s;}
+.bars span:nth-child(3) {height: 55%; animation-delay: .6s;}
+.bars span:nth-child(4) {height: 90%; animation-delay: .9s;}
+.bars span:nth-child(5) {height: 35%; animation-delay: 1.2s;}
+.bars span:nth-child(6) {height: 65%; animation-delay: 1.5s;}
+@keyframes rise {0%,100% {transform: scaleY(.45); transform-origin: bottom;}
+                 50% {transform: scaleY(1); transform-origin: bottom;}}
+.scan {position: relative; width: 120px; height: 150px; opacity: .6;}
+.scan svg {width: 100%; height: 100%;}
+.scan::after {content: ""; position: absolute; left: 6px; right: 6px; height: 2px;
+    background: linear-gradient(90deg, transparent, #0E9F6E, transparent);
+    box-shadow: 0 0 12px #0E9F6E; animation: scanline 3.4s ease-in-out infinite;}
+@keyframes scanline {0%,100% {top: 8%;} 50% {top: 88%;}}
+.ring {position: absolute; border: 1px solid rgba(59,130,246,.35); border-radius: 50%;
+    animation: ringout 5s ease-out infinite;}
+.ring.r1 {width: 90px; height: 90px;} .ring.r2 {width: 90px; height: 90px; animation-delay: 2.5s;}
+@keyframes ringout {0% {transform: scale(.6); opacity: .8;} 100% {transform: scale(2.6); opacity: 0;}}
+.live {display: inline-flex; align-items: center; gap: 7px; font-size: .72rem; color: #9CA3AF;
+    letter-spacing: .14em; text-transform: uppercase;}
+.live i {width: 8px; height: 8px; border-radius: 50%; background: #0E9F6E;
+    box-shadow: 0 0 0 0 rgba(14,159,110,.7); animation: blip 1.8s infinite;}
+@keyframes blip {70% {box-shadow: 0 0 0 9px rgba(14,159,110,0);} 100% {box-shadow: 0 0 0 0 rgba(14,159,110,0);}}
+@media (max-width: 900px) {.side {display: none;}}
+@media (prefers-reduced-motion: reduce) {
+    .bg-layer *, .side *, .logo-glow {animation: none !important;}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -154,6 +209,7 @@ if st.session_state.user is None:
 [data-testid="stSidebar"], [data-testid="collapsedControl"] {display: none;}
 </style>
 """, unsafe_allow_html=True)
+    st.markdown('<div class="bg-layer"><div class="bg-grid"></div><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div><div class="side left"><div class="bars"><span></span><span></span><span></span><span></span><span></span><span></span></div></div><div class="side right"><div class="ring r1"></div><div class="ring r2"></div><div class="scan"><svg viewBox="0 0 64 64" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"><path d="M32 4 L56 14 V32 C56 46 46 56 32 60 C18 56 8 46 8 32 V14 Z"/><path d="M22 33 L29 40 L43 24"/></svg></div></div>', unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 3, 1])
     with mid:
         st.markdown(
@@ -168,7 +224,9 @@ if st.session_state.user is None:
             '<span class="stat"><b>9</b> policy checks</span>'
             '<span class="stat"><b>95%</b> confidence intervals</span>'
             '<span class="stat"><b>SHA-256</b> audit chain</span>'
-            '</div></div>', unsafe_allow_html=True)
+            '</div>'
+            '<p style="margin-top:14px"><span class="live"><i></i>Evidence engine online</span></p>'
+            '</div>', unsafe_allow_html=True)
 
         f1, f2, f3 = st.columns(3)
         for col, key, t, txt in [
@@ -211,7 +269,7 @@ if st.session_state.user is None:
     st.stop()
 
 USER = st.session_state.user
-@st.cache_data
+st.markdown('<div class="bg-layer"><div class="bg-grid"></div><div class="orb o1" style="opacity:.18"></div><div class="orb o2" style="opacity:.16"></div></div>', unsafe_allow_html=True)
 def load_evidence():
     if not EVIDENCE.exists():
         return None
@@ -832,3 +890,90 @@ elif page == "Release Gate":
                    "Editing or deleting any entry breaks every hash after it.")
     else:
         st.info("No reviews recorded yet.")
+        # ---------------- Audit a System ----------------
+elif page == "Audit a System":
+    st.title("Audit a System Before Deployment")
+    st.caption("Submit a system for review. It is judged by the same thresholds as the registered "
+               "systems. Uploaded rows are never stored, only the aggregate results.")
+
+    from checks.audit_upload import (audit_predictions, audit_chatbot,
+                                     build_tabular_record, build_chatbot_record)
+
+    kind = st.radio("System type", ["Tabular model (predictions CSV)", "Chatbot (system prompt)"],
+                    horizontal=True)
+    c1, c2 = st.columns(2)
+    sys_name = c1.text_input("System name")
+    sys_owner = USER["name"]
+    c2.text_input("Owner / team", value=sys_owner, disabled=True)
+    purpose = st.text_input("Intended use")
+    run_id = "upload_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if kind.startswith("Tabular"):
+        up = st.file_uploader("Predictions CSV", type="csv")
+        if up is not None:
+            df = pd.read_csv(up)
+            st.write(f"{len(df):,} rows, {len(df.columns)} columns")
+            st.dataframe(df.head(), use_container_width=True)
+            cols = list(df.columns)
+            a, b = st.columns(2)
+            label_col = a.selectbox("True label column", cols, index=0)
+            pred_col = b.selectbox("Prediction column", cols, index=min(1, len(cols) - 1))
+            sens = st.multiselect("Sensitive attribute columns",
+                                  [c for c in cols if c not in (label_col, pred_col)])
+            ready = bool(sens and sys_name.strip())
+            if st.button("Run audit", disabled=not ready):
+                with st.spinner("Computing fairness profile..."):
+                    try:
+                        attrs, d, dropped, acc, f1, n = audit_predictions(
+                            df, label_col, pred_col, sens, run_id)
+                        rec = build_tabular_record(sys_name.strip(), sys_owner, purpose,
+                                                   attrs, d, acc, f1, dropped, n)
+                        st.session_state["audit_result"] = {"record": rec, "dropped": dropped}
+                    except Exception as e:
+                        st.session_state.pop("audit_result", None)
+                        st.error(f"Audit failed: {e}")
+            if not ready:
+                st.caption("Enter a system name and choose at least one sensitive column.")
+    else:
+        model = st.text_input("Model name (Groq)", value="qwen/qwen3.8-27b")
+        sp = st.text_area("System prompt of the chatbot", height=160,
+                          placeholder="You are a helpful assistant for ...")
+        ready = bool(sp.strip() and sys_name.strip())
+        st.caption("About 40 API calls, roughly three minutes. A canary secret is added to your prompt.")
+        if st.button("Run audit", disabled=not ready):
+            bar = st.progress(0.0)
+            try:
+                rows, summary, d, errors = audit_chatbot(sp, model, run_id, progress=bar.progress)
+                rec = build_chatbot_record(sys_name.strip(), sys_owner, purpose,
+                                           model, summary, d, errors)
+                st.session_state["audit_result"] = {"record": rec, "dropped": 0}
+            except Exception as e:
+                st.session_state.pop("audit_result", None)
+                st.error(f"Audit failed: {e}")
+
+    res = st.session_state.get("audit_result")
+    if res:
+        rec = res["record"]
+        d = rec["decision"]
+        st.divider()
+        st.subheader(f"Result: {rec['system']['name']}")
+        st.markdown(pill(d["status"]), unsafe_allow_html=True)
+        st.metric("Confidence", f"{d['confidence']:.0%}")
+        if res["dropped"]:
+            st.warning(f"{res['dropped']} rows with missing values were excluded.")
+        pairs = finding_pairs(rec)
+        if not pairs:
+            st.success("All checks are within thresholds.")
+        for reason, action in pairs:
+            st.write(f"**[{severity(reason)}]** {reason}")
+            if action:
+                st.caption(f"Action: {action}")
+        st.write("**Documented limitations**")
+        for l in rec["limitations"]:
+            st.write(f"- {l}")
+        if st.button("Register this system"):
+            store = load_uploads()
+            store[rec["system"]["name"]] = rec
+            UPLOADS.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+            st.session_state.pop("audit_result", None)
+            st.success("Registered. It now appears on Overview.")
