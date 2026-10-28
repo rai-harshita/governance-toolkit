@@ -1,17 +1,22 @@
-import json
+import os
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
-import login_page
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))      # must come before login_page and theme are imported
+os.chdir(ROOT)
+
+import json
+from datetime import datetime, timedelta
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 st.set_page_config(page_title="AequiGate", page_icon=None, layout="wide")
 
+import login_page
 import theme
 from checks.audit_chain import append_entry, read_entries, verify_chain
 from checks.auth import ROLE_PAGES, authenticate, create_user, load_users
