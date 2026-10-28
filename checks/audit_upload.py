@@ -46,6 +46,8 @@ def audit_predictions(df, label_col, pred_col, sensitive_cols, run_id):
                       "eo_difference": first["eo_difference"],
                       "group_sizes": first["group_sizes"]}},
         run_id, extended=ext)
+    decision.confidence = min(decision.confidence, 0.75)
+    decision.reasons.append("Confidence capped: audited from predictions only, without explainability or counterfactual tests")
     return attrs, decision, dropped, float(accuracy_score(y, pred)), float(f1_score(y, pred)), len(df)
 
 

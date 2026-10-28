@@ -14,7 +14,7 @@ st.set_page_config(page_title="AequiGate", page_icon=None, layout="wide")
 
 import theme
 from checks.audit_chain import append_entry, read_entries, verify_chain
-from checks.auth import ROLE_PAGES, authenticate, create_user
+from checks.auth import ROLE_PAGES, authenticate, create_user, load_users
 from checks.policy_map import POLICY, match
 
 try:
@@ -23,6 +23,25 @@ except ImportError:
     build_report = None          # fpdf2 not installed: PDF buttons show a hint instead of crashing
 
 theme.apply_theme()
+@st.cache_resource
+def seed_accounts():
+    """Create accounts listed under [seed_users] in Streamlit Secrets (used on the cloud)."""
+    try:
+        seeds = dict(st.secrets.get("seed_users", {}))
+    except Exception:
+        return 0
+    made = 0
+    for username, cfg in seeds.items():
+        if username not in load_users():
+            try:
+                create_user(username, cfg["password"], cfg.get("role", "submitter"), cfg.get("name", username))
+                made += 1
+            except Exception:
+                pass
+    return made
+
+
+seed_accounts()
 
 EVIDENCE = Path("evidence/latest.json")
 RISKS = Path("evidence/risk_register.json")
