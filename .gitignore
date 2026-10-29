@@ -11,3 +11,5 @@ evidence/audit_log.jsonl
 evidence/risk_register.json
 evidence/uploaded_systems.json
 sample_predictions.csv
+   !demo/sample_predictions.csv
+   
